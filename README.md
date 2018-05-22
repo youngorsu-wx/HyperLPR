@@ -4,7 +4,12 @@
 This research aims at simply developping plate recognition project based on deep learning methods, with low complexity and high speed. This 
 project has been used by some commercial corporations. Free and open source, deploying by Zeusee. 
 
-HyperLPR是一个使用深度学习针对对中文车牌识别的实现，与较为流行的开源的[EasyPR](https://github.com/liuruoze/EasyPR)相比，它的检测速度和鲁棒性和多场景的适应性都要好于目前开源的EasyPR。
+
+##### 更新热点:
+
+- 添加的新的Python 序列模型-识别率大幅提高(尤其汉字)(2018.3.12)
+- 新添加了HyperLPR Lite 只需要一个文件 160行代码即可完全整个车牌识别流程.
+- 提供精确定位的车牌矩形框(2018.3.12)	
 
 #### 相关资源 
 
@@ -16,7 +21,15 @@ HyperLPR是一个使用深度学习针对对中文车牌识别的实现，与较
 
 ### 更新
 
-+ 增加字符分割[训练代码和字符分割介绍](https://github.com/zeusees/HyperLPR-Training)
++ 添加的新的Python 序列模型-识别率大幅提高(尤其汉字)(2018.3.12)
++ 添加了HyperLPR Lite 仅仅需160 行代码即可实现车牌识别(2018.3.12)
++ 提供精确定位的车牌矩形框(2018.3.12)
+
+
++ 增加了端到端模型的cpp实现(Linux)(2018.1.31)
+
+
++ 增加字符分割[训练代码和字符分割介绍](https://github.com/zeusees/HyperLPR-Training)(2018.1.)
 + 更新了Android实现，大幅提高准确率和速度 (骁龙835 (*720*x*1280*)  ~50ms )(2017.12.27)
 + 添加了IOS版本的实现（感谢[xiaojun123456](https://github.com/xiaojun123456)的工作）
 + 添加端到端的序列识别模型识别率大幅度提升,使得无需分割字符即可识别,识别速度提高20% (2017.11.17)
@@ -37,11 +50,24 @@ HyperLPR是一个使用深度学习针对对中文车牌识别的实现，与较
 + 识别率高,仅仅针对车牌ROI在EasyPR数据集上，0-error达到 95.2%, 1-error识别率达到 97.4% (指在定位成功后的车牌识别率)
 + 轻量 总代码量不超1k行
 
+### 模型资源说明
+
++ cascade.xml  检测模型 - 目前效果最好的cascade检测模型
++ cascade_lbp.xml  召回率效果较好，但其错检太多
++ char_chi_sim.h5 Keras模型-可识别34类数字和大写英文字  使用14W样本训练 
++ char_rec.h5 Keras模型-可识别34类数字和大写英文字  使用7W样本训练 
++ ocr_plate_all_w_rnn_2.h5 基于CNN的序列模型
++ ocr_plate_all_gru.h5 基于GRU的序列模型从OCR模型修改，效果目前最好但速度较慢，需要20ms。
++ plate_type.h5 用于车牌颜色判断的模型
++ model12.h5 左右边界回归模型
+
+
+
 ### 注意事项:
 
 + Win工程中若需要使用静态库，需单独编译
 + 本项目的C++实现和Python实现无任何关联，都为单独实现
-+ 在编译C++工程的时候必须要使用OpenCV 3.3(DNN 库)，否则无法编译
++ 在编译C++工程的时候必须要使用OpenCV 3.3(DNN 库)，否则无法编译 
 
 ### Python 依赖
 
@@ -59,12 +85,25 @@ HyperLPR是一个使用深度学习针对对中文车牌识别的实现，与较
 
 ### 简单使用方式
 
+推荐使用新更新的HyperLPR Lite，仅需一单独文件。
+
 ```python
-from hyperlpr import  pipline as  pp
+import HyperLPRLite as pr
 import cv2
-image = cv2.imread("filename")
-image,res  = pp.SimpleRecognizePlate(image)
-print(res)
+import numpy as np
+grr = cv2.imread("images_rec/demo1.jpg")
+model = pr.LPR("model/cascade.xml","model/model12.h5","model/ocr_plate_all_gru.h5")
+
+for pstr,confidence,rect in model.SimpleRecognizePlateByE2E(grr):
+        if confidence>0.7:
+            image = drawRectBox(grr, rect, pstr+" "+str(round(confidence,3)))
+            print("plate_str",pstr)
+            print("plate_confidence",confidence)
+
+
+cv2.imshow("image",image)
+cv2.waitKey(0)
+
 ```
 ### Linux/Mac 编译
 
@@ -77,6 +116,43 @@ cd build
 cmake ../
 sudo make -j 
 ```
+
+### CPP demo
+
+```cpp
+#include "../include/Pipeline.h"
+int main(){
+    pr::PipelinePR prc("model/cascade.xml",
+                      "model/HorizonalFinemapping.prototxt","model/HorizonalFinemapping.caffemodel",
+                      "model/Segmentation.prototxt","model/Segmentation.caffemodel",
+                      "model/CharacterRecognization.prototxt","model/CharacterRecognization.caffemodel",
+                       "model/SegmentationFree.prototxt","model/SegmentationFree.caffemodel"
+                    );
+  //定义模型文件
+
+    cv::Mat image = cv::imread("/Users/yujinke/ClionProjects/cpp_ocr_demo/test.png");
+    std::vector<pr::PlateInfo> res = prc.RunPiplineAsImage(image,pr::SEGMENTATION_FREE_METHOD);
+  //使用端到端模型模型进行识别 识别结果将会保存在res里面
+ 
+    for(auto st:res) {
+        if(st.confidence>0.75) {
+            std::cout << st.getPlateName() << " " << st.confidence << std::endl;
+          //输出识别结果 、识别置信度
+            cv::Rect region = st.getPlateRect();
+          //获取车牌位置
+ cv::rectangle(image,cv::Point(region.x,region.y),cv::Point(region.x+region.width,region.y+region.height),cv::Scalar(255,255,0),2);
+          //画出车牌位置
+          
+        }
+    }
+
+    cv::imshow("image",image);
+    cv::waitKey(0);
+    return 0 ;
+}
+```
+
+### 
 
 ### 可识别和待支持的车牌的类型
 
@@ -117,13 +193,9 @@ sudo make -j
 
 车牌识别框架开发时使用的数据并不是很多，有意着可以为我们提供相关车牌数据。联系邮箱 455501914@qq.com。
 
-### 捐赠我们
-
-***如果您愿意支持我们持续对这个框架的开发，可以通过下面的链接来对我们捐赠。***
-
-**[支付宝/微信](http://chuantu.biz/t6/178/1513525003x-1404758184.png)**
 
 #### 获取帮助
 
-+ HyperLPR讨论QQ群：673071218, 加前请备注HyperLPR交流。
++ HyperLPR讨论QQ群1:673071218, 群2: 746123554 ,加前请备注HyperLPR交流。
+
 
